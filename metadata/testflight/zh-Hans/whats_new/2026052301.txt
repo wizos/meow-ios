@@ -1,0 +1,43 @@
+构建 2026052301 (1.3.1)
+
+新增
+• Geo 数据库随应用一同打包。Country.mmdb、GeoLite2-ASN.mmdb 和本地
+  生成的 geosite.mrs 会在首次启动时拷贝到 App Group 容器，因此
+  GEOIP / IP-ASN / GEOSITE 规则立刻生效——无需首次连接时下载，
+  也不再需要在被封锁的网络环境下绕过 GitHub/jsDelivr 取 MMDB。
+  安装包体积增加约 7.7 MiB。
+
+• geosite.mrs 由仓库内 core/rust/geosite-mrs-builder/ 这个 Rust
+  小工具在发版时基于 MetaCubeX 的 geosite.dat 本地生成——meow-rs
+  仅认 .mrs 格式，但官方从不发布该文件，于是我们自行转换后将其
+  签入 App/Resources/GeoData/。子字符串（Plain）和正则（Regex）
+  条目在转换时被丢弃（DomainTrie 不支持这两种匹配），精确匹配
+  和子域名匹配一比一保留。
+
+• meow-rs 升级到 27f9d79b（0.8.0 之后）。该版本带入了引擎内的
+  geodata 启动补齐（commit 9048f370）和通过代理路由的 internal_http
+  下载器（commit 97b1efd4）：若打包的 DB 因任何原因缺失，引擎
+  会通过用户配置的第一个代理去下载，因此即便在直连 GitHub/jsDelivr
+  被封锁的网络下也能完成首次取回。
+
+• 应用侧的 BootstrapEngine + GeoAssetService + MinimalConfigBuilder
+  全部移除。VpnManager.connect() 直接调用 startVPNTunnel；不再需要
+  先起一个"只为下载 MMDB"的进程内 meow 引擎做预热。
+
+已知
+• 非 DNS 的 UDP 转发仍未启用（QUIC/HTTP3 会回退到 TCP HTTP/2，
+  通常对用户无感）。
+• 上游 geosite.dat 中的 16 条 Plain 和 374 条 Regex 条目在 .mrs
+  转换时被丢弃（DomainTrie 没有对应能力）。若您的 GEOSITE 规则
+  依赖这些条目，对应的命中会落空，最终走到 MATCH。
+
+测试建议
+• 全新安装的首启冒烟（删除后重装）：
+  – 应用打开后能直接连通隧道，不再出现"准备中…"阶段。
+  – 访问国内站点（baidu.com）和国外站点（github.com），均应正常
+    加载。
+  – 设置 → 关于 → 内存：重度浏览下 PacketTunnel 维持在 30-60 MiB。
+• GEOSITE 规则路由：从配置里挑一条（例如 GEOSITE,youtube,YouTube），
+  确认点 Connect 之后立刻命中对应节点——此前该规则要等 geosite DB
+  下载到位才生效。
+• 问题反馈：https://github.com/madeye/meow-ios/issues

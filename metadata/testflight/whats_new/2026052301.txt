@@ -1,0 +1,50 @@
+Build 2026052301 (1.3.1)
+
+WHAT'S NEW
+• Geo databases now ship inside the app bundle. Country.mmdb,
+  GeoLite2-ASN.mmdb, and a freshly-generated geosite.mrs are copied
+  into the App Group container on first launch, so GEOIP / IP-ASN /
+  GEOSITE rules work immediately — no first-connect download, no
+  blocked CDN dance to reach the MMDB hosts from a censored network.
+  Bundle size grew ~7.7 MiB.
+
+• The geosite.mrs is built locally from MetaCubeX's geosite.dat via
+  a small Rust converter under core/rust/geosite-mrs-builder/ —
+  meow-rs only reads the .mrs format and no public source ships one,
+  so we generate the file at release time and check it into
+  App/Resources/GeoData/. Substring (Plain) and Regex entries are
+  skipped on conversion (the DomainTrie has no equivalent); exact
+  and subdomain entries map 1:1.
+
+• meow-rs bumped to 27f9d79b (post-0.8.0). Brings in the in-engine
+  geodata startup-fetch (commit 9048f370) and the proxy-routed
+  internal_http downloader (commit 97b1efd4): when the bundled DBs
+  are absent for any reason, the engine downloads them through the
+  first user-defined proxy, so first-boot fetch succeeds on hosts
+  where direct GitHub/jsdelivr is censored.
+
+• App-side BootstrapEngine + GeoAssetService + MinimalConfigBuilder
+  are gone. VpnManager.connect() now calls startVPNTunnel directly;
+  no more pre-flight in-process meow engine spun up just to download
+  MMDBs through the user's first proxy.
+
+KNOWN
+• Non-DNS UDP forwarding still pending (QUIC/HTTP3 falls back to
+  TCP HTTP/2; usually transparent).
+• 16 Plain + 374 Regex entries from upstream geosite.dat don't
+  survive the .mrs conversion (no DomainTrie equivalent). If any
+  GEOSITE rule depends on those, those particular hits will miss
+  and fall through to MATCH.
+
+FOR TESTERS
+• First-launch smoke test on a CLEAN install (delete + reinstall):
+  – App opens, tunnel connects without any "preparing…" stage.
+  – Visit a CN site (baidu.com) and a non-CN site (github.com);
+    both should load.
+  – Settings → About → Memory: PacketTunnel stays in the 30-60 MiB
+    band under heavy browsing.
+• GEOSITE rule routing: pick a rule from your config (e.g.
+  GEOSITE,youtube,YouTube) and confirm the matching node is hit
+  from the moment you tap Connect — previously the rule silently
+  no-op'd until the geosite DB landed.
+• Issues: https://github.com/madeye/meow-ios/issues
